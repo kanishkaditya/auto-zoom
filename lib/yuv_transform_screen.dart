@@ -1,10 +1,10 @@
-import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:yuvtransform/camera_handler.dart';
-import 'package:yuvtransform/service/image_result_processor_service.dart';
+import 'package:yuvtransform/camera_view_singleton.dart';
+import 'package:yuvtransform/imageViewer.dart';
 
 import 'camera_screen.dart';
 
@@ -14,32 +14,18 @@ class YuvTransformScreen extends StatefulWidget {
 }
 
 class _YuvTransformScreenState extends State<YuvTransformScreen>
-    with CameraHandler, WidgetsBindingObserver {
-  List<StreamSubscription> _subscription = List();
-  ImageResultProcessorService _imageResultProcessorService;
-  bool _isProcessing = false;
+    with CameraHandler {
+
+  CameraImage img;
 
   @override
   void initState() {
     super.initState();
+
     // Registers the page to observer for life cycle managing.
-    _imageResultProcessorService = ImageResultProcessorService();
-    WidgetsBinding.instance.addObserver(this);
-    _subscription.add(_imageResultProcessorService.queue.listen((event) {
-      _isProcessing = false;
-    }));
     onNewCameraSelected(cameras[cameraType]);
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    // Dispose all streams!
-    _subscription.forEach((element) {
-      element.cancel();
-    });
-    super.dispose();
-  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -63,9 +49,10 @@ class _YuvTransformScreenState extends State<YuvTransformScreen>
     }
     controller = CameraController(
       cameraDescription,
-      ResolutionPreset.medium,
+      ResolutionPreset.high,
       enableAudio: false,
     );
+
 
     // If the controller is updated then update the UI.
     controller.addListener(() {
@@ -77,9 +64,14 @@ class _YuvTransformScreenState extends State<YuvTransformScreen>
 
     try {
       await controller.initialize();
-
+      Size screenSize = MediaQuery.of(context).size;
+      Size previewSize = controller.value.previewSize;
+      CameraViewSingleton.screenSize = screenSize;
+      CameraViewSingleton.ratio = screenSize.width / previewSize.height;
       await controller
-          .startImageStream((CameraImage image) => _processCameraImage(image));
+          .startImageStream((CameraImage image){
+            img=image;
+      } );
     } on CameraException catch (e) {
       showCameraException(e);
     }
@@ -87,15 +79,6 @@ class _YuvTransformScreenState extends State<YuvTransformScreen>
     if (mounted) {
       setState(() {});
     }
-  }
-
-  void _processCameraImage(CameraImage image) async {
-    if (_isProcessing)
-      return; //Do not detect another image until you finish the previous.
-    _isProcessing = true;
-    print("Sent a new image and sleeping for: $DELAY_TIME");
-    await Future.delayed(Duration(milliseconds: DELAY_TIME),
-        () => _imageResultProcessorService.addRawImage(image));
   }
 
   @override
@@ -112,6 +95,15 @@ class _YuvTransformScreenState extends State<YuvTransformScreen>
           ),
         ],
       )
-    ])));
+    ]
+            ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: (){
+              Navigator.push(context, MaterialPageRoute(builder: (context)=>ImageViewer(image: img)));
+              // _processCameraImage(image);
+            },
+          ),
+        )
+    );
   }
 }
